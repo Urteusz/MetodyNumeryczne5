@@ -7,19 +7,19 @@ def f1(x): return x
 def f2(x): return np.abs(x)
 def f3(x): return x**3 - 2 * x + 1
 def f4(x): return np.sin(x)
-def f5(x): return np.sin(x**2)
+def f5(x): return np.cos(x**2)
 
 # Słownik dostępnych funkcji z opisami
-functions = {
+funkcje = {
     '1': ("x", f1),
     '2': ("|x|", f2),
     '3': ("x^3 - 2x + 1", f3),
     '4': ("sin(x)", f4),
-    '5': ("sin(x^2)", f5)
+    '5': ("cos(x^2)", f5)
 }
 
-# Generuje wielomiany Hermite'a (fizyków) do stopnia n włącznie
-def hermite_polynomials(n):
+# Generuje wielomiany Hermite'a do stopnia n włącznie
+def wielomiany_hermitea(n):
     H = [np.poly1d([1]), np.poly1d([2, 0])]  # H_0(x), H_1(x)
     for k in range(2, n + 1):
         Hk = np.poly1d([2, 0]) * H[-1] - 2 * (k - 1) * H[-2]  # rekurencyjna relacja
@@ -27,7 +27,7 @@ def hermite_polynomials(n):
     return H
 
 # Całkowanie metodą Simpsona z wagą e^{-x^2}, wymagane dla ortogonalności Hermite'ów
-def simpson_weighted(f, a, b, n):
+def simpson_z_waga(f, a, b, n):
     if n % 2 == 1:
         n += 1  # liczba podprzedziałów musi być parzysta dla reguły Simpsona
     h = (b - a) / n
@@ -39,59 +39,58 @@ def simpson_weighted(f, a, b, n):
     return (h / 3) * S
 
 # Oblicza współczynniki a_k rozwinięcia funkcji f w bazie wielomianów Hermite'a
-def compute_hermite_coefficients_simpson(f, degree, a, b, n_intervals):
-    H_polys = hermite_polynomials(degree)
-    coeffs = []
-    for i in range(degree + 1):
-        Hi = H_polys[i]
+def oblicz_wspolczynniki_hermitea_simpson(f, stopien, a, b, liczba_przedzialow):
+    wielomiany_H = wielomiany_hermitea(stopien)
+    wspolczynniki = []
+    for i in range(stopien + 1):
+        Hi = wielomiany_H[i]
         # funkcja podcałkowa: f(x) * H_i(x)
-        numerator_func = (lambda H: lambda x: f(x) * H(x))(Hi)
-        num = simpson_weighted(numerator_func, a, b, n_intervals)
+        funkcja_licznika = (lambda H: lambda x: f(x) * H(x))(Hi)
+        licznik = simpson_z_waga(funkcja_licznika, a, b, liczba_przedzialow)
         # norma L^2 dla H_i z wagą e^{-x^2}
-        norm = math.sqrt(math.pi) * (2 ** i) * math.factorial(i)
-        coeffs.append(num / norm)
-    return coeffs, H_polys
+        norma = math.sqrt(math.pi) * (2 ** i) * math.factorial(i)
+        wspolczynniki.append(licznik / norma)
+    return wspolczynniki, wielomiany_H
 
 # Oblicza wartości aproksymowanej funkcji na podstawie współczynników i bazowych H_i
-def horner_evaluate(coeffs, H_polys, x_vals):
-    y_vals = np.zeros_like(x_vals, dtype=float)
-    for a, H in zip(coeffs, H_polys):
-        y_vals += a * H(x_vals)
-    return y_vals
+def oblicz_wartosci_hornera(wspolczynniki, wielomiany_H, wartosci_x):
+    wartosci_y = np.zeros_like(wartosci_x, dtype=float)
+    for a, H in zip(wspolczynniki, wielomiany_H):
+        wartosci_y += a * H(wartosci_x)
+    return wartosci_y
 
-# Interfejs główny programu
 def main():
     print("Wybierz funkcję do aproksymacji:")
-    for key in functions:
-        print(f"{key}: {functions[key][0]}")
+    for klucz in funkcje:
+        print(f"{klucz}: {funkcje[klucz][0]}")
 
-    choice = input("Twój wybór: ").strip()
-    fname, f_orig = functions.get(choice, functions['1'])
+    wybor = input("Twój wybór: ").strip()
+    nazwa_funkcji, funkcja_oryg = funkcje.get(wybor, funkcje['1'])
 
     # Wczytanie parametrów aproksymacji
     a = float(input("Lewy koniec przedziału aproksymacji: "))
     b = float(input("Prawy koniec przedziału aproksymacji: "))
-    degree = int(input("Stopień wielomianu Hermite'a: "))
+    stopien = int(input("Stopień wielomianu Hermite'a: "))
 
     # Automatyczne ustalenie sensownej liczby przedziałów do całkowania
-    n_intervals = max(50, 10 * degree)
-    if n_intervals % 2 == 1:
-        n_intervals += 1
+    liczba_przedzialow = max(100, 20 * stopien)
+    if liczba_przedzialow % 2 == 1:
+        liczba_przedzialow += 1
 
-    f = np.vectorize(f_orig)
-    coeffs, H_polys = compute_hermite_coefficients_simpson(f_orig, degree, a, b, n_intervals)
+    f = np.vectorize(funkcja_oryg)
+    wspolczynniki, wielomiany_H = oblicz_wspolczynniki_hermitea_simpson(funkcja_oryg, stopien, a, b, liczba_przedzialow)
 
     # Obliczenie wartości aproksymacji i błędu RMS
-    x_vals = np.linspace(a, b, 500)
-    y_true = f(x_vals)
-    y_approx = horner_evaluate(coeffs, H_polys, x_vals)
+    wartosci_x = np.linspace(a, b, 500)
+    y_prawdziwe = f(wartosci_x)
+    y_aproksymowane = oblicz_wartosci_hornera(wspolczynniki, wielomiany_H, wartosci_x)
 
-    error = np.sqrt(np.mean((y_true - y_approx) ** 2))
-    print(f"\nRMS Błąd aproksymacji: {error:.5e}")
+    blad = np.sqrt(np.mean((y_prawdziwe - y_aproksymowane) ** 2))
+    print(f"\nRMS Błąd aproksymacji: {blad:.5e}")
 
     # Wizualizacja wyników
-    plt.plot(x_vals, y_true, label=f"Oryginalna: {fname}")
-    plt.plot(x_vals, y_approx, '--', label=f"Aproksymacja (stopień {degree})")
+    plt.plot(wartosci_x, y_prawdziwe, label=f"Oryginalna: {nazwa_funkcji}")
+    plt.plot(wartosci_x, y_aproksymowane, '--', label=f"Aproksymacja (stopień {stopien})")
     plt.title("Aproksymacja wielomianami Hermite'a")
     plt.xlabel("x")
     plt.ylabel("y")
