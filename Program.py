@@ -1,371 +1,303 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.integrate import quad
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Aproksymacja wielomianami Hermite'a (wariant 2) – wszystko w jednym pliku,
+z czterema domyślnymi funkcjami do wyboru.
+"""
+
 import math
-
-
-# Funkcje aproksymowane
-def funkcja_liniowa(x):
-    return 2 * x + 1
-
-
-def funkcja_abs(x):
-    return np.abs(x)
-
-
-def funkcja_wielomian(x):
-    return x ** 3 - 2 * x ** 2 + x + 1
-
-
-def funkcja_tryg(x):
-    return np.sin(x) + 0.5 * np.cos(2 * x)
-
-
-def funkcja_zlozona(x):
-    return np.exp(-x ** 2) * np.sin(x)
-
-
-# Słownik funkcji
-FUNKCJE = {
-    1: ("Liniowa: 2x + 1", funkcja_liniowa),
-    2: ("Wartość bezwzględna: |x|", funkcja_abs),
-    3: ("Wielomian: x³ - 2x² + x + 1", funkcja_wielomian),
-    4: ("Trygonometryczna: sin(x) + 0.5cos(2x)", funkcja_tryg),
-    5: ("Złożona: e^(-x²)sin(x)", funkcja_zlozona)
-}
-
-
-# Wielomiany Hermite'a - generowanie iteracyjne
-def generuj_wielomiany_hermite(stopien):
-    """Generuje współczynniki wielomianów Hermite'a do stopnia n włącznie"""
-    wielomiany = []
-
-    # H₀(x) = 1
-    wielomiany.append([1])
-
-    if stopien >= 1:
-        # H₁(x) = 2x
-        wielomiany.append([0, 2])
-
-    # Rekurencja: Hₖ(x) = 2x·Hₖ₋₁(x) - 2k·Hₖ₋₂(x)
-    for k in range(2, stopien + 1):
-        # Pomnażanie przez 2x (przesunięcie i pomnożenie przez 2)
-        h_k_minus_1 = wielomiany[k - 1]
-        term1 = [0] + [2 * coeff for coeff in h_k_minus_1]
-
-        # Pomnażanie przez -2k
-        h_k_minus_2 = wielomiany[k - 2]
-        term2 = [-2 * k * coeff for coeff in h_k_minus_2]
-
-        # Dodawanie wielomianów (wyrównanie długości)
-        max_len = max(len(term1), len(term2))
-        term1.extend([0] * (max_len - len(term1)))
-        term2.extend([0] * (max_len - len(term2)))
-
-        h_k = [term1[i] + term2[i] for i in range(max_len)]
-        wielomiany.append(h_k)
-
-    return wielomiany
-
-
-def oblicz_wartosc_wielomianu_horner(wspolczynniki, x):
-    """Oblicza wartość wielomianu metodą Hornera"""
-    if not wspolczynniki:
-        return 0
-
-    wynik = wspolczynniki[-1]
-    for i in range(len(wspolczynniki) - 2, -1, -1):
-        wynik = wynik * x + wspolczynniki[i]
-
-    return wynik
-
-
-def oblicz_hermite(n, x, wielomiany_wspolczynniki):
-    """Oblicza wartość n-tego wielomianu Hermite'a w punkcie x"""
-    if n >= len(wielomiany_wspolczynniki):
-        return 0
-    return oblicz_wartosc_wielomianu_horner(wielomiany_wspolczynniki[n], x)
-
-
-# Całkowanie numeryczne - metoda Simpsona adaptowana
-def simpson_adaptive(f, a, b, tol=1e-6, max_iter=1000):
-    """Adaptacyjna metoda Simpsona dla całkowania"""
-
-    def simpson_basic(f, a, b):
-        h = (b - a) / 2
-        return h / 3 * (f(a) + 4 * f(a + h) + f(b))
-
-    def simpson_recursive(f, a, b, tol, whole, m):
-        if m <= 0:
-            return whole
-
-        c = (a + b) / 2
-        left = simpson_basic(f, a, c)
-        right = simpson_basic(f, c, b)
-
-        if abs(left + right - whole) <= 15 * tol:
-            return left + right + (left + right - whole) / 15
-
-        return (simpson_recursive(f, a, c, tol / 2, left, m - 1) +
-                simpson_recursive(f, c, b, tol / 2, right, m - 1))
-
-    whole = simpson_basic(f, a, b)
-    return simpson_recursive(f, a, b, tol, whole, max_iter)
-
-
-def waga_hermite(x):
-    """Funkcja wagowa dla wielomianów Hermite'a: e^(-x²)"""
-    return np.exp(-x ** 2)
-
-
-def oblicz_wspolczynnik_aproksymacji(f, n, a, b, wielomiany_wspolczynniki):
-    """Oblicza współczynnik cₙ dla aproksymacji"""
-
-    def licznik(x):
-        return waga_hermite(x) * f(x) * oblicz_hermite(n, x, wielomiany_wspolczynniki)
-
-    def mianownik(x):
-        h_n = oblicz_hermite(n, x, wielomiany_wspolczynniki)
-        return waga_hermite(x) * h_n * h_n
-
-    # Obliczanie całek numerycznie
-    try:
-        integral_licznik = simpson_adaptive(licznik, a, b)
-        integral_mianownik = simpson_adaptive(mianownik, a, b)
-
-        if abs(integral_mianownik) < 1e-12:
-            return 0
-
-        return integral_licznik / integral_mianownik
-    except:
-        # Fallback do scipy quad w przypadku problemów
-        integral_licznik, _ = quad(licznik, a, b)
-        integral_mianownik, _ = quad(mianownik, a, b)
-
-        if abs(integral_mianownik) < 1e-12:
-            return 0
-
-        return integral_licznik / integral_mianownik
-
-
-def aproksymacja_hermite(f, stopien, a, b):
-    """Główna funkcja aproksymacji wielomianami Hermite'a"""
-    wielomiany_wspolczynniki = generuj_wielomiany_hermite(stopien)
-    wspolczynniki_aproks = []
-
-    print(f"Obliczanie współczynników aproksymacji...")
-    for n in range(stopien + 1):
-        c_n = oblicz_wspolczynnik_aproksymacji(f, n, a, b, wielomiany_wspolczynniki)
-        wspolczynniki_aproks.append(c_n)
-        print(f"c_{n} = {c_n:.6f}")
-
-    def funkcja_aproksymujaca(x):
-        wynik = 0
-        for n in range(stopien + 1):
-            if abs(wspolczynniki_aproks[n]) > 1e-12:
-                wynik += wspolczynniki_aproks[n] * oblicz_hermite(n, x, wielomiany_wspolczynniki)
-        return wynik
-
-    return funkcja_aproksymujaca, wspolczynniki_aproks, wielomiany_wspolczynniki
-
-
-def oblicz_blad_aproksymacji(f, f_aproks, a, b, n_punktow=1000):
-    """Oblicza błąd aproksymacji (średniokwadratowy)"""
-    x_vals = np.linspace(a, b, n_punktow)
-    bledy = []
-
-    for x in x_vals:
-        try:
-            blad = (f(x) - f_aproks(x)) ** 2
-            bledy.append(blad)
-        except:
-            bledy.append(0)
-
-    return np.sqrt(np.mean(bledy))
-
-
-def dobierz_stopien_automatycznie(f, a, b, docelowy_blad, max_stopien=10):
-    """Automatyczny dobór stopnia wielomianu dla osiągnięcia zadanego błędu"""
-    print(f"\nAutomatyczny dobór stopnia wielomianu dla błędu < {docelowy_blad}")
-    print("=" * 60)
-
-    for stopien in range(1, max_stopien + 1):
-        print(f"\nTestowanie stopnia {stopien}...")
-
-        try:
-            f_aproks, _, _ = aproksymacja_hermite(f, stopien, a, b)
-            blad = oblicz_blad_aproksymacji(f, f_aproks, a, b)
-
-            print(f"Stopień {stopien}: błąd = {blad:.6f}")
-
-            if blad < docelowy_blad:
-                print(f"\n✓ Znaleziono odpowiedni stopień: {stopien}")
-                return stopien, f_aproks, blad
-
-        except Exception as e:
-            print(f"Błąd dla stopnia {stopien}: {e}")
-            continue
-
-    print(f"\n⚠ Nie udało się osiągnąć błędu < {docelowy_blad} do stopnia {max_stopien}")
-    return max_stopien, None, float('inf')
-
-
-def rysuj_wykresy(f, f_aproks, a, b, tytul, stopien):
-    """Rysuje wykresy funkcji oryginalnej i aproksymującej"""
-    x_vals = np.linspace(a, b, 1000)
-    y_orig = [f(x) for x in x_vals]
-    y_aproks = [f_aproks(x) for x in x_vals]
-
-    plt.figure(figsize=(12, 8))
-    plt.plot(x_vals, y_orig, 'b-', linewidth=2, label='Funkcja oryginalna')
-    plt.plot(x_vals, y_aproks, 'r--', linewidth=2, label=f'Aproksymacja Hermite (stopień {stopien})')
-    plt.xlabel('x')
-    plt.ylabel('y')
-    plt.title(f'Aproksymacja wielomianami Hermite\'a\n{tytul}')
+import matplotlib.pyplot as plt
+from typing import Callable, Tuple, List
+
+# -------------------------------------------------------------------
+# 1. Schemat Hornera
+# -------------------------------------------------------------------
+def horner(x: float, coeffs: List[float]) -> float:
+    """
+    Oblicza wartość wielomianu w punkcie x, używając schematu Hornera.
+    coeffs: lista współczynników [a_0, a_1, ..., a_n],
+    gdzie P(x) = a_0 + a_1*x + ... + a_n*x^n.
+    """
+    result = 0.0
+    for a in reversed(coeffs):
+        result = result * x + a
+    return result
+
+# -------------------------------------------------------------------
+# 2. Wielomiany Hermite’a (fizykalistyczne)
+# -------------------------------------------------------------------
+def hermite_coeffs(n: int) -> List[float]:
+    """
+    Zwraca współczynniki H_n(x) (w porządku rosnących potęg x) dla fizykalistycznego
+    wielomianu Hermite'a:
+      H_0(x) = 1
+      H_1(x) = 2x
+      H_{n+1}(x) = 2x * H_n(x) - 2n * H_{n-1}(x)
+    """
+    if n == 0:
+        return [1.0]
+    if n == 1:
+        return [0.0, 2.0]
+    H_prev: List[float] = [1.0]       # H_0
+    H_curr: List[float] = [0.0, 2.0]  # H_1
+    for k in range(1, n):
+        deg_curr = len(H_curr) - 1  # = k
+        H_next = [0.0] * (deg_curr + 2)
+        # 2 * x * H_curr --> przesunięcie współczynników
+        for i, a in enumerate(H_curr):
+            H_next[i + 1] += 2.0 * a
+        # -2k * H_prev (wyrównanie stopni)
+        factor = -2.0 * k
+        for i, a in enumerate(H_prev):
+            H_next[i] += factor * a
+        H_prev, H_curr = H_curr, H_next
+    return H_curr
+
+def hermite_eval(x: float, coeffs: List[float]) -> float:
+    """
+    Ocena wielomianu Hermite'a o danej liście współczynników w punkcie x,
+    używając schematu Hornera.
+    """
+    return horner(x, coeffs)
+
+# -------------------------------------------------------------------
+# 3. Całkowanie – Simpsona ze współczynnikiem wagowym, adaptacyjne
+# -------------------------------------------------------------------
+def simpson_weighted_general(f: Callable[[float], float],
+                             w: Callable[[float], float],
+                             a: float,
+                             b: float,
+                             n: int) -> float:
+    """
+    Oblicza ∫_a^b f(x) * w(x) dx metodą Simpsona (kompozytową) przy n podprzedziałach (n parzyste).
+    """
+    h = (b - a) / n
+    result = 0.0
+    for i in range(0, n, 2):
+        x0 = a + i * h
+        x1 = x0 + h
+        x2 = x0 + 2 * h
+        result += (h / 3) * (f(x0) * w(x0) + 4.0 * f(x1) * w(x1) + f(x2) * w(x2))
+    return result
+
+def adaptive_simpson_general(f: Callable[[float], float],
+                             w: Callable[[float], float],
+                             a: float,
+                             b: float,
+                             eps: float = 1e-6,
+                             initial_n: int = 4,
+                             max_n: int = 1 << 16) -> Tuple[float, int]:
+    """
+    Adaptacyjnie oblicza ∫_a^b f(x) * w(x) dx metodą Simpsona, zwiększając n (parzyste)
+    aż do osiągnięcia dokładności eps lub do max_n. Zwraca (wartość całki, użyte n).
+    """
+    n = initial_n if initial_n % 2 == 0 else initial_n + 1
+    prev = simpson_weighted_general(f, w, a, b, n)
+    while n * 2 <= max_n:
+        n *= 2
+        curr = simpson_weighted_general(f, w, a, b, n)
+        if abs(curr - prev) < eps:
+            return curr, n
+        prev = curr
+    return prev, n
+
+# -------------------------------------------------------------------
+# 4. Aproksymacja – współczynniki c_k oraz ocena wielomianu
+# -------------------------------------------------------------------
+def compute_coefficients(f: Callable[[float], float],
+                         a: float,
+                         b: float,
+                         N: int,
+                         eps: float,
+                         initial_n: int) -> Tuple[List[float], List[List[float]]]:
+    """
+    Oblicza współczynniki c_0..c_N dla aproksymacji f przez wielomiany Hermite'a
+    stopnia N na [a,b] z wagą w(x)=exp(-x^2). Zwraca (lista c_k, lista list współczynników H_k).
+    """
+    w = lambda x: math.exp(-x * x)
+    c_list: List[float] = []
+    herm_coeffs_list: List[List[float]] = []
+
+    for k in range(N + 1):
+        Hk = hermite_coeffs(k)
+        herm_coeffs_list.append(Hk)
+        f_Hk = lambda x, coeffs=Hk: hermite_eval(x, coeffs)
+        numerator, _ = adaptive_simpson_general(
+            lambda x: f(x),
+            lambda x: f_Hk(x) * w(x),
+            a, b,
+            eps=eps / 10,
+            initial_n=initial_n
+        )
+        denominator, _ = adaptive_simpson_general(
+            lambda x: f_Hk(x),
+            lambda x: f_Hk(x) * w(x),
+            a, b,
+            eps=eps / 10,
+            initial_n=initial_n
+        )
+        if abs(denominator) < 1e-16:
+            c_k = 0.0
+        else:
+            c_k = numerator / denominator
+        c_list.append(c_k)
+
+    return c_list, herm_coeffs_list
+
+def evaluate_approximation(x: float,
+                           c_list: List[float],
+                           herm_coeffs_list: List[List[float]]) -> float:
+    """
+    Ocena wielomianu aproksymacyjnego p_N(x) = sum_{k=0}^N c_k * H_k(x).
+    """
+    result = 0.0
+    for k, c_k in enumerate(c_list):
+        coeffs_k = herm_coeffs_list[k]
+        result += c_k * hermite_eval(x, coeffs_k)
+    return result
+
+def compute_error_L2(f: Callable[[float], float],
+                     p_eval: Callable[[float], float],
+                     a: float,
+                     b: float,
+                     eps: float,
+                     initial_n: int) -> float:
+    """
+    Oblicza błąd L² wagowy: sqrt( ∫_a^b [f(x) - p(x)]^2 * w(x) dx ).
+    """
+    w = lambda x: math.exp(-x * x)
+    integral, _ = adaptive_simpson_general(
+        lambda x: f(x) - p_eval(x),
+        lambda x: (f(x) - p_eval(x)) * w(x),
+        a, b,
+        eps=eps / 10,
+        initial_n=initial_n
+    )
+    return math.sqrt(integral)
+
+# -------------------------------------------------------------------
+# 5. Narzędzia do rysowania wykresów
+# -------------------------------------------------------------------
+def plot_function_pair(f: Callable[[float], float],
+                       p: Callable[[float], float],
+                       a: float,
+                       b: float,
+                       num_points: int = 500) -> None:
+    """
+    Rysuje na jednym wykresie funkcję oryginalną f(x) i aproksymację p(x).
+    """
+    xs = [a + i * (b - a) / (num_points - 1) for i in range(num_points)]
+    ys_f = [f(x) for x in xs]
+    ys_p = [p(x) for x in xs]
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(xs, ys_f, label="f(x) (oryginał)")
+    plt.plot(xs, ys_p, '--', label="p_N(x) (aproksymacja)")
+    plt.title("Porównanie: f(x) vs. p_N(x)")
+    plt.xlabel("x")
+    plt.ylabel("wartość funkcji")
+    plt.grid(True)
     plt.legend()
-    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
     plt.show()
 
+# -------------------------------------------------------------------
+# 6. Menu główne i logika programu
+# -------------------------------------------------------------------
+def choose_function() -> Callable[[float], float]:
+    """
+    Pozwala użytkownikowi wybrać jedną z czterech domyślnych funkcji do aproksymacji:
+      1) f(x) = x
+      2) f(x) = |x|
+      3) f(x) = x^2 + 2x + 1
+      4) f(x) = sin(x)
+    """
+    print("Wybierz jedną z czterech domyślnych funkcji do aproksymacji:")
+    print("1) f(x) = x")
+    print("2) f(x) = |x|")
+    print("3) f(x) = x^2 + 2x + 1")
+    print("4) f(x) = sin(x)")
+    choice = input("Twój wybór (1–4): ").strip()
 
-def analiza_stopnia(f, nazwa_funkcji, a, b, max_stopien=8):
-    """Analiza wpływu stopnia wielomianu na dokładność"""
-    print(f"\n{'=' * 60}")
-    print(f"ANALIZA WPŁYWU STOPNIA WIELOMIANU")
-    print(f"Funkcja: {nazwa_funkcji}")
-    print(f"Przedział: [{a}, {b}]")
-    print(f"{'=' * 60}")
-
-    stopnie = []
-    bledy = []
-
-    for stopien in range(1, max_stopien + 1):
-        try:
-            print(f"\nStopień {stopien}:")
-            f_aproks, wspolczynniki, _ = aproksymacja_hermite(f, stopien, a, b)
-            blad = oblicz_blad_aproksymacji(f, f_aproks, a, b)
-
-            stopnie.append(stopien)
-            bledy.append(blad)
-
-            print(f"Błąd średniokwadratowy: {blad:.8f}")
-
-        except Exception as e:
-            print(f"Błąd obliczeniowy: {e}")
-
-    # Wykres analizy
-    if stopnie and bledy:
-        plt.figure(figsize=(10, 6))
-        plt.semilogy(stopnie, bledy, 'bo-', linewidth=2, markersize=8)
-        plt.xlabel('Stopień wielomianu')
-        plt.ylabel('Błąd średniokwadratowy (skala log)')
-        plt.title(f'Wpływ stopnia wielomianu na dokładność aproksymacji\n{nazwa_funkcji}')
-        plt.grid(True, alpha=0.3)
-        plt.show()
-
+    if choice == '1':
+        return lambda x: x
+    elif choice == '2':
+        return lambda x: abs(x)
+    elif choice == '3':
+        # współczynniki [1, 2, 1] oznaczają 1 + 2x + x^2
+        return lambda x: horner(x, [1.0, 2.0, 1.0])
+    else:
+        # choice == '4'
+        return lambda x: math.sin(x)
 
 def main():
-    print("PROGRAM APROKSYMACJI WIELOMIANAMI HERMITE'A")
-    print("=" * 50)
+    print("=== Aproksymacja wielomianami Hermite'a (wariant 2) ===")
+    f = choose_function()
 
-    # Wybór funkcji
-    print("\nDostępne funkcje:")
-    for key, (nazwa, _) in FUNKCJE.items():
-        print(f"{key}. {nazwa}")
-
-    while True:
-        try:
-            wybor_funkcji = int(input("\nWybierz funkcję (1-5): "))
-            if wybor_funkcji in FUNKCJE:
-                nazwa_funkcji, funkcja = FUNKCJE[wybor_funkcji]
-                break
-            else:
-                print("Nieprawidłowy wybór!")
-        except ValueError:
-            print("Wprowadź liczbę!")
-
-    # Parametry aproksymacji
-    print(f"\nWybrana funkcja: {nazwa_funkcji}")
-
-    try:
-        a = float(input("Podaj początek przedziału aproksymacji: "))
-        b = float(input("Podaj koniec przedziału aproksymacji: "))
-
-        if a >= b:
-            print("Błąd: początek przedziału musi być mniejszy od końca!")
-            return
-
-    except ValueError:
-        print("Błąd: wprowadź poprawne liczby!")
+    a = float(input("Podaj lewą granicę przedziału aproksymacji a: "))
+    b = float(input("Podaj prawą granicę przedziału aproksymacji b: "))
+    if b <= a:
+        print("  Błąd: b musi być większe niż a. Kończę.")
         return
 
-    # Tryb pracy
-    print("\nTryby pracy:")
-    print("1. Zadany stopień wielomianu")
-    print("2. Automatyczny dobór stopnia (dla oceny 5)")
-    print("3. Analiza wpływu stopnia wielomianu")
+    print("\nTryb działania:")
+    print("1) Stały stopień wielomianu aproksymacyjnego")
+    print("2) Podajemy docelowy błąd, program dobiera stopień iteracyjnie")
+    mode = input("Twój wybór (1–2): ").strip()
 
-    try:
-        tryb = int(input("Wybierz tryb (1-3): "))
-    except ValueError:
-        print("Błąd: wprowadź liczbę!")
-        return
+    eps_integ = float(input("Podaj ε dla całkowania (np. 1e-6): "))
+    initial_n = int(input("Podaj początkową liczbę podprzedziałów (np. 4): "))
+    if initial_n % 2 != 0:
+        initial_n += 1  # zapewniamy, że jest parzyste
 
-    if tryb == 1:
-        # Tryb ze stałym stopniem
-        try:
-            stopien = int(input("Podaj stopień wielomianu aproksymacyjnego: "))
-            if stopien < 0:
-                print("Stopień musi być nieujemny!")
-                return
-        except ValueError:
-            print("Błąd: wprowadź liczbę całkowitą!")
-            return
+    if mode == '1':
+        N = int(input("Podaj stopień wielomianu aproksymacyjnego N: "))
+        print("\n=== Obliczanie współczynników ===")
+        c_list, herm_coeffs_list = compute_coefficients(f, a, b, N, eps_integ, initial_n)
 
-        print(f"\nRozpoczynanie aproksymacji stopnia {stopien}...")
-        try:
-            f_aproks, wspolczynniki, wielomiany_wsp = aproksymacja_hermite(funkcja, stopien, a, b)
+        def pN_fixed(x: float) -> float:
+            return evaluate_approximation(x, c_list, herm_coeffs_list)
 
-            blad = oblicz_blad_aproksymacji(funkcja, f_aproks, a, b)
-            print(f"\nBłąd średniokwadratowy aproksymacji: {blad:.8f}")
+        err = compute_error_L2(f, pN_fixed, a, b, eps_integ, initial_n)
 
-            # Wyświetl kilka wartości wielomianów Hermite'a
-            print(f"\nPierwsze wielomiany Hermite'a (współczynniki):")
-            for i, wsp in enumerate(wielomiany_wsp[:min(6, len(wielomiany_wsp))]):
-                print(f"H_{i}(x): {wsp}")
-
-            rysuj_wykresy(funkcja, f_aproks, a, b, nazwa_funkcji, stopien)
-
-        except Exception as e:
-            print(f"Błąd podczas aproksymacji: {e}")
-
-    elif tryb == 2:
-        # Tryb automatycznego doboru stopnia
-        try:
-            docelowy_blad = float(input("Podaj oczekiwany błąd aproksymacji: "))
-            if docelowy_blad <= 0:
-                print("Błąd musi być dodatni!")
-                return
-        except ValueError:
-            print("Błąd: wprowadź poprawną liczbę!")
-            return
-
-        stopien, f_aproks, blad = dobierz_stopien_automatycznie(funkcja, a, b, docelowy_blad)
-
-        if f_aproks is not None:
-            rysuj_wykresy(funkcja, f_aproks, a, b, nazwa_funkcji, stopien)
-
-    elif tryb == 3:
-        # Analiza wpływu stopnia
-        try:
-            max_stopien = int(input("Podaj maksymalny stopień do analizy (domyślnie 8): ") or "8")
-        except ValueError:
-            max_stopien = 8
-
-        analiza_stopnia(funkcja, nazwa_funkcji, a, b, max_stopien)
+        print(f"\nStopień N = {N}")
+        print("Współczynniki c_k (k=0..N):")
+        for k, c in enumerate(c_list):
+            print(f"  c_{k} = {c:.6e}")
+        print(f"Błąd L²-ważony: {err:.6e}")
+        plot_function_pair(f, pN_fixed, a, b)
 
     else:
-        print("Nieprawidłowy tryb!")
+        eps_target = float(input("Podaj docelowy błąd L² (np. 1e-4): "))
+        print("\n=== Dobieranie stopnia iteracyjnie aż do eps_target ===")
+        N = 0
+        found = False
 
+        while True:
+            c_list, herm_coeffs_list = compute_coefficients(f, a, b, N, eps_integ, initial_n)
+
+            def pN_iter(x: float, c_list=c_list, herm_coeffs_list=herm_coeffs_list) -> float:
+                return evaluate_approximation(x, c_list, herm_coeffs_list)
+
+            err = compute_error_L2(f, pN_iter, a, b, eps_integ, initial_n)
+            print(f"  N = {N:2d}  => błąd L² = {err:.3e}")
+            if err <= eps_target:
+                found = True
+                break
+            N += 1
+            if N > 50:
+                print("  Nie udało się osiągnąć zadanego błędu do N=50. Kończę pętlę.")
+                break
+
+        if found:
+            print("\n=== Wynik końcowy ===")
+            print(f"Uzyskano błąd {err:.3e} przy N = {N}")
+            print("Współczynniki c_k:")
+            for k, c in enumerate(c_list):
+                print(f"  c_{k} = {c:.6e}")
+            plot_function_pair(f, pN_iter, a, b)
+
+    print("\n=== Koniec programu ===")
 
 if __name__ == "__main__":
     main()
